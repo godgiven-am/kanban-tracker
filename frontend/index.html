@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kanban</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; }
+      /* Responsive: columns wrap into a single stack on narrow screens */
+      .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; padding: 12px; }
+      .col { background: #e4e6ea; border-radius: 8px; padding: 8px; min-height: 120px; }
+      .col.over { background: #cfe3ff; }
+      .card { background: #fff; border-radius: 6px; padding: 8px; margin: 8px 0; box-shadow: 0 1px 2px #0003; }
+      .row { display: flex; gap: 6px; align-items: center; }
+      .grow { flex: 1; min-width: 0; }
+      .handle { cursor: grab; touch-action: none; padding: 4px 8px; }
+      input, button { font: inherit; padding: 6px; }
+      small { color: #666; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
