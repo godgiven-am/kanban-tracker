@@ -15,6 +15,23 @@ export default function cardsRouter(io) {
     } catch (e) { next(e); }
   });
 
+  r.get('/cards', authenticate, async (_req, res, next) => {
+    try { res.json(await Card.find()); } catch (e) { next(e); }
+  });
+
+  r.put('/cards/:id', authenticate, requireRole('VERIFIED'), async (req, res, next) => {
+    try {
+      if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid id' });
+      const updates = {};
+      if (req.body?.title !== undefined) updates.title = req.body.title;
+      if (req.body?.description !== undefined) updates.description = req.body.description;
+      const card = await Card.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+      if (!card) return res.sendStatus(404);
+      io.emit('cardUpdated', { cardId: card.id, updates });
+      res.json(card);
+    } catch (e) { next(e); }
+  });
+
   r.post('/cards', authenticate, requireRole('VERIFIED'), async (req, res, next) => {
     try {
       const { title, description, columnId } = req.body ?? {};

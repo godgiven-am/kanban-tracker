@@ -9,6 +9,7 @@ import Column from './models/Column.js';
 import Comment from './models/Comment.js';
 import User from './models/User.js';
 import cardsRouter from './routes/cards.js';
+import commentsRouter, { addComment, removeComment, canEdit } from './routes/comments.js';
 import authRouter from './auth/routes.js';
 import usersRouter from './users/routes.js';
 import moderationRouter from './moderation/routes.js';
@@ -21,7 +22,8 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // 503 for every route while Mongo is unreachable
-app.use(requireDb, authRouter(), usersRouter(io), moderationRouter(io), cardsRouter(io));
+app.use(requireDb, authRouter(), usersRouter(io), moderationRouter(io));
+app.use(['/', '/api'], cardsRouter(io), commentsRouter(io));
 // Central error mapping: bad input -> 400, Mongo connectivity problems -> 503
 app.use((err, _req, res, _next) => {
   if (err.type === 'entity.parse.failed' || err instanceof mongoose.Error.ValidationError || err instanceof mongoose.Error.CastError)
@@ -30,8 +32,6 @@ app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal error' });
 });
-
-const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 // Only authenticated, non-banned users may connect; each joins a private room so a ban can disconnect them
 io.use(async (socket, next) => {
@@ -56,8 +56,6 @@ const handler = (socket, minRole, fn) => async (payload = {}) => {
   } catch (e) { socket.emit('error', { error: e.message }); }
 };
 
-const canEdit = (comment, user) => comment && !comment.hidden && (user.role === 'ADMIN' || comment.authorId === user.id);
-
 io.on('connection', (socket) => {
   socket.on('cardMoved', handler(socket, 'VERIFIED', async ({ cardId, toColumnId }) => {
     if (!mongoose.isValidObjectId(cardId) || !mongoose.isValidObjectId(toColumnId)) return;
@@ -80,23 +78,20 @@ io.on('connection', (socket) => {
     if (card) io.emit('cardUpdated', { cardId, updates: safe });
   }));
 
-  socket.on('commentAdded', handler(socket, 'VERIFIED', async ({ cardId, commentText }, user) => {
-    const t = text(commentText, 1000);
-    if (!t || !mongoose.isValidObjectId(cardId) || !(await Card.exists({ _id: cardId }))) return;
-    io.emit('commentAdded', await Comment.create({ cardId, text: t, authorId: user.id, authorName: user.name }));
+  socket.on('commentAdded', handler(socket, 'VERIFIED', async ({ cardId, commentText, parentId }, user) => {
+    const comment = await addComment({ cardId, text: commentText, parentId }, user);
+    if (comment) io.emit('commentAdded', comment);
   }));
 
   socket.on('commentUpdated', handler(socket, 'VERIFIED', async ({ commentId, text: raw }, user) => {
-    const t = text(raw, 1000);
+    const t = typeof raw === 'string' ? raw.trim().slice(0, 1000) : '';
     if (!t || !mongoose.isValidObjectId(commentId) || !canEdit(await Comment.findById(commentId), user)) return;
     await Comment.updateOne({ _id: commentId }, { text: t });
     io.emit('commentUpdated', { commentId, text: t });
   }));
 
   socket.on('commentDeleted', handler(socket, 'VERIFIED', async ({ commentId }, user) => {
-    if (!mongoose.isValidObjectId(commentId) || !canEdit(await Comment.findById(commentId), user)) return;
-    await Comment.deleteOne({ _id: commentId });
-    io.emit('commentDeleted', commentId);
+    (await removeComment(commentId, user)).forEach((id) => io.emit('commentDeleted', id));
   }));
 
   // Typing is ephemeral: relayed, never stored
