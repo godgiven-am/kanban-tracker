@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 import { API } from './actions';
 import * as A from './actions';
 import { typingChanged } from './slices';
+import { reportUpserted } from './features/report/model/reportsSlice';
 import { loadSession } from './entities/user/model';
 import type { AppDispatch } from './store';
 
@@ -19,6 +20,10 @@ export function bindSocket(dispatch: AppDispatch) {
   socket.on('commentAdded', (p) => dispatch(A.commentAdded(p)));
   socket.on('commentUpdated', (p) => dispatch(A.commentUpdated(p)));
   socket.on('commentDeleted', (p) => dispatch(A.commentDeleted(p)));
+
+  // Only sockets the server placed in the 'admins' room (role ADMIN, checked on handshake) receive these
+  socket.on('reportCreated', (p) => dispatch(reportUpserted(p)));
+  socket.on('reportResolved', (p) => dispatch(reportUpserted(p)));
 
   // "Typing..." expires on its own if no further keystroke event arrives
   // Server-side rejections (validation, DB down) are surfaced to the user

@@ -5,8 +5,7 @@ import { request, errorMessage } from '../shared/api/http';
 import { isVerified } from '../entities/user/model';
 import { useAppSelector } from '../store';
 import type { Card as CardT } from '../types';
-import CommentList from './CommentList';
-import CommentForm from './CommentForm';
+import CommentSection from '../features/comment/ui/CommentSection';
 import CardModal from './CardModal';
 
 export default function Card({ card }: { card: CardT }) {
@@ -32,12 +31,7 @@ export default function Card({ card }: { card: CardT }) {
       </div>
       {card.description && <p>{card.description}</p>}
       <button onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Comments'}</button>
-      {open && (
-        <>
-          <CommentList cardId={card.id} />
-          {canEdit && <CommentForm cardId={card.id} />}
-        </>
-      )}
+      {open && <CommentSection cardId={card.id} />}
       {editing && <CardModal card={card} onClose={() => setEditing(false)} />}
     </div>
   );

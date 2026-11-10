@@ -10,6 +10,7 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ROLES, default: 'UNVERIFIED' },
     banned: { type: Boolean, default: false },
+    bannedUntil: { type: Date }, // temporary comment ban; permanent bans use `banned`
     banReason: { type: String, trim: true, maxlength: 200 },
     verifyTokenHash: { type: String, select: false, index: true },
     verifyExpires: { type: Date, select: false },

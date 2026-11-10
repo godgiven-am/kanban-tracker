@@ -36,7 +36,7 @@ export const commentsSlice = createSlice({
         if (!s.items.some((c) => c.id === a.payload.id)) s.items.push(a.payload);
         s.typing[a.payload.cardId] = false; // a sent comment ends "typing..."
       })
-      .addCase(A.commentUpdated, (s, a) => { const c = s.items.find((x) => x.id === a.payload.commentId); if (c) c.text = a.payload.text; })
+      .addCase(A.commentUpdated, (s, a) => { const c = s.items.find((x) => x.id === a.payload.commentId); if (c) { c.text = a.payload.text; c.updatedAt = a.payload.updatedAt; } })
       .addCase(A.commentDeleted, (s, a) => { s.items = s.items.filter((c) => c.id !== a.payload); })
       .addCase(A.cardDeleted, (s, a) => { s.items = s.items.filter((c) => c.cardId !== a.payload); }),
 });

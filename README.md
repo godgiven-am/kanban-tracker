@@ -1,26 +1,95 @@
-# Kanban App
+# Kanban-трекер
 
-React + Redux Toolkit frontend, Express + Socket.IO backend, MongoDB storage.
+## Что это
 
-## Setup
+Kanban-трекер с real-time синхронизацией, комментариями к карточкам, жалобами и модерацией. Все изменения на доске мгновенно видны всем, кто её открыл.
 
-1. `cp .env.example .env`
-2. `docker-compose up --build`
-3. Open http://localhost:3000
+## Технологии
 
-The API listens on http://localhost:3001. MongoDB data persists in the `mongo_data` volume.
+- Frontend: React, TypeScript, Redux Toolkit, Socket.IO client, shadcn/ui (Radix UI + Tailwind), Vite
+- Backend: Node.js, Express, Socket.IO, Mongoose
+- База данных: MongoDB 6
+- Запуск: Docker, docker-compose
 
-## Authentication and roles
+## Как запустить
 
-Set in `.env` (see `docker-compose.yml`):
+1. Скопируйте `.env.example` в `.env`: `cp .env.example .env`.
+2. Задайте переменные в `.env`:
 
-| Variable | Purpose |
+   | Переменная | Назначение |
+   | --- | --- |
+   | `MONGODB_URI` | Адрес MongoDB, например `mongodb://mongodb:27017/kanban` |
+   | `PORT` | Порт API, по умолчанию `3001` |
+   | `JWT_SECRET` | Обязательно, не короче 32 символов |
+   | `ADMIN_EMAIL` | Аккаунт с этой почтой станет `ADMIN` после подтверждения почты |
+   | `SMTP_URL` | Необязательно, например `smtps://user:pass@host`. Без него ссылки подтверждения печатаются в логе backend |
+   | `MAIL_FROM`, `APP_URL` | Адрес отправителя и адрес frontend для ссылки в письме |
+
+3. Запустите: `docker-compose up --build`.
+4. Откройте http://localhost:3000.
+
+API доступен на http://localhost:3001. Данные MongoDB хранятся в томе `mongo_data`.
+
+Без Docker: `cd backend && npm i && npm start` и `cd frontend && npm i && npm run dev` (нужна запущенная MongoDB).
+
+## Как работает
+
+- **Real-time (Socket.IO).** Клиент отправляет намерение (REST или сокет), сервер проверяет его, записывает в MongoDB и рассылает результат всем клиентам, включая отправителя. События: `cardMoved`, `cardUpdated`, `commentAdded`, `commentUpdated`, `commentDeleted`, `typing`. При переподключении доска загружается заново. Соединение требует JWT в `auth.token`.
+- **Комментарии.** У каждой карточки есть список комментариев (до 500 символов). Автор и администратор могут редактировать и удалять комментарий; у изменённого появляется пометка «(изменено)». Добавление и удаление применяются на экране сразу, а при ошибке откатываются.
+- **Жалобы.** Любой пользователь может пожаловаться на чужой комментарий: причина (спам, оскорбление, травля, другое) и подробности до 300 символов. На один комментарий — одна жалоба от пользователя (повтор вернёт 409). Жалоба хранит снимок текста, поэтому остаётся понятной, даже если комментарий изменят или удалят. Новые жалобы приходят администраторам через сокет-комнату `admins`.
+- **Модерация.** Администратор видит таблицу жалоб на вкладке «Модерация» и может отклонить жалобу, удалить комментарий или забанить автора на 7 дней либо навсегда.
+- **Роли и верификация.** После регистрации пользователь получает письмо со ссылкой (действует 24 часа). Пока почта не подтверждена, роль — `UNVERIFIED`.
+- **Баны.** Временный бан (`bannedUntil`) запрещает комментировать, ответ — 403. Бессрочный бан закрывает вход и разрывает сокет-соединения.
+
+## Роли
+
+| Роль | Что может |
 | --- | --- |
-| `JWT_SECRET` | Required, 32+ characters |
-| `ADMIN_EMAIL` | The account with this email becomes `ADMIN` when it verifies its email |
-| `SMTP_URL` | Optional, e.g. `smtps://user:pass@host`. Without it, verification links are printed to the backend log |
-| `MAIL_FROM`, `APP_URL` | Sender address and frontend base URL used in the verification link |
+| `UNVERIFIED` | Смотреть доску, менять профиль, жаловаться на комментарии. Писать комментарии и менять карточки нельзя |
+| `VERIFIED` | Всё предыдущее, плюс создавать, перемещать, редактировать и удалять карточки, писать комментарии, править и удалять свои |
+| `ADMIN` | Всё предыдущее, плюс править и удалять любые комментарии, разбирать жалобы, банить пользователей |
 
-Roles: `UNVERIFIED` can only view the board and edit their profile. `VERIFIED` can also create, move, edit and delete cards, and add comments (and edit or delete their own). `ADMIN` can also moderate: hide or restore comments, ban or unban users, and edit or delete any comment. Verification links expire after 24 hours.
+## API
 
-Auth endpoints are `/auth/*`, profile is `PATCH /users/me`, and admin endpoints are `/users` and `/moderation/*`. Socket.IO connections must send the JWT as `auth.token`.
+| Метод и путь | Доступ |
+| --- | --- |
+| `GET /api/comments?cardId=` | авторизованные |
+| `POST /api/comments`, `PUT /api/comments/:id`, `DELETE /api/comments/:id` | `VERIFIED`+, править и удалять — автор или `ADMIN` |
+| `POST /api/reports` | любой авторизованный |
+| `GET /api/reports?status=pending` | `ADMIN` |
+| `PATCH /api/reports/:id/resolve` | `ADMIN`, тело: `action` (`dismiss` / `deleteComment` / `banAuthor`), `banDurationDays?` |
+
+Коды ошибок: 400 — неверные данные, 401 — нет входа, 403 — нет прав или бан, 404 — не найдено, 409 — повторная жалоба или жалоба уже обработана, 503 — БД недоступна.
+
+## Структура проекта (FSD)
+
+```
+backend/
+  models/       схемы Mongoose: Card, Column, Comment, Report, User
+  routes/       REST: cards, comments, reports
+  auth/         регистрация, вход, JWT, письма
+  users/        профиль, баны (админ)
+  moderation/   скрытие и восстановление комментариев
+  middleware/   авторизация, проверка БД, лимиты запросов
+  server.js     Express + Socket.IO, обработчики сокет-событий
+frontend/src/
+  app/          корневой компонент и навигация
+  entities/     типы и модели (user, comment)
+  features/     законченные сценарии:
+    auth/ comment/ report/ moderation/ help/ profile/
+  shared/
+    api/        HTTP-клиент
+    config/     messages.ts — все русские тексты интерфейса
+    ui/         компоненты shadcn/ui
+    lib/        утилиты
+  components/   доска, колонки, карточки
+  store/        Redux store и срез карточек
+```
+
+## Решение проблем
+
+**БД не подключается.** Проверьте, что контейнер `mongodb` запущен (`docker-compose ps`) и `MONGODB_URI` указывает на него (`mongodb://mongodb:27017/kanban`; вне Docker — `localhost`). Пока БД недоступна, API отвечает 503, а сервер сам повторяет подключение каждые 2 секунды. Подробности смотрите в `docker-compose logs backend`.
+
+**Сокеты не соединяются.** Убедитесь, что backend доступен на порту 3001 и вы вошли в аккаунт: без валидного JWT или с забаненным аккаунтом соединение отклоняется. Frontend ходит на `http://<хост страницы>:3001`, поэтому порт должен быть открыт. Обновите страницу после смены `JWT_SECRET`: старые токены перестают работать.
+
+**Контейнер не стартует.** Чаще всего не задан `JWT_SECRET` (нужно не менее 32 символов) — docker-compose откажется запускаться. Также проверьте, что Docker запущен, порты 3000, 3001 и 27017 свободны, и пересоберите образы: `docker-compose up --build`. Если frontend не стартует, удалите том `node_modules` и запустите заново.

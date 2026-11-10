@@ -9,7 +9,8 @@ import Column from './models/Column.js';
 import Comment from './models/Comment.js';
 import User from './models/User.js';
 import cardsRouter from './routes/cards.js';
-import commentsRouter, { addComment, removeComment, canEdit } from './routes/comments.js';
+import commentsRouter, { addComment, removeComment, canEdit, assertCanComment, cleanText } from './routes/comments.js';
+import reportsRouter from './routes/reports.js';
 import authRouter from './auth/routes.js';
 import usersRouter from './users/routes.js';
 import moderationRouter from './moderation/routes.js';
@@ -23,7 +24,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 // 503 for every route while Mongo is unreachable
 app.use(requireDb, authRouter(), usersRouter(io), moderationRouter(io));
-app.use(['/', '/api'], cardsRouter(io), commentsRouter(io));
+app.use(['/', '/api'], cardsRouter(io), commentsRouter(io), reportsRouter(io));
 // Central error mapping: bad input -> 400, Mongo connectivity problems -> 503
 app.use((err, _req, res, _next) => {
   if (err.type === 'entity.parse.failed' || err instanceof mongoose.Error.ValidationError || err instanceof mongoose.Error.CastError)
@@ -40,6 +41,7 @@ io.use(async (socket, next) => {
     if (!user || user.banned) return next(new Error('unauthorized'));
     socket.data.userId = user.id;
     socket.join(`user:${user.id}`);
+    if (user.role === 'ADMIN') socket.join('admins'); // only admins receive new reports
     next();
   } catch { next(new Error('unauthorized')); }
 });
@@ -84,10 +86,12 @@ io.on('connection', (socket) => {
   }));
 
   socket.on('commentUpdated', handler(socket, 'VERIFIED', async ({ commentId, text: raw }, user) => {
-    const t = typeof raw === 'string' ? raw.trim().slice(0, 1000) : '';
-    if (!t || !mongoose.isValidObjectId(commentId) || !canEdit(await Comment.findById(commentId), user)) return;
-    await Comment.updateOne({ _id: commentId }, { text: t });
-    io.emit('commentUpdated', { commentId, text: t });
+    assertCanComment(user);
+    const t = cleanText(raw);
+    if (!mongoose.isValidObjectId(commentId) || !canEdit(await Comment.findById(commentId), user)) return;
+    const updatedAt = Date.now();
+    await Comment.updateOne({ _id: commentId }, { text: t, updatedAt });
+    io.emit('commentUpdated', { commentId, text: t, updatedAt });
   }));
 
   socket.on('commentDeleted', handler(socket, 'VERIFIED', async ({ commentId }, user) => {

@@ -11,7 +11,11 @@ import ModerationPanel from '../features/moderation/ModerationPanel';
 import { Button } from '../shared/ui/button';
 import Board from '../components/Board';
 
-type View = 'board' | 'profile' | 'moderation';
+import ModerationTable from '../features/moderation/ui/ModerationTable';
+import HelpPage from '../features/help/ui/HelpPage';
+import { MSG } from '../shared/config/messages';
+
+type View = 'board' | 'profile' | 'help' | 'moderation';
 
 export default function App() {
   const dispatch = useAppDispatch();
@@ -34,12 +38,12 @@ export default function App() {
   if (loading) return null;
   if (!user) return <AuthPage message={verifyMessage} />;
 
-  const tabs: View[] = isAdmin(user) ? ['board', 'profile', 'moderation'] : ['board', 'profile'];
+  const tabs: View[] = isAdmin(user) ? ['board', 'profile', 'help', 'moderation'] : ['board', 'profile', 'help'];
   return (
     <>
       <header className="ui flex items-center gap-2 border-b bg-background px-3 py-2">
         {tabs.map((t) => (
-          <Button key={t} size="sm" variant={view === t ? 'default' : 'ghost'} onClick={() => setView(t)} className="capitalize">{t}</Button>
+          <Button key={t} size="sm" variant={view === t ? 'default' : 'ghost'} onClick={() => setView(t)}>{MSG.nav[t]}</Button>
         ))}
         <span className="ml-auto text-sm text-muted-foreground">{user.name}</span>
         <Button size="sm" variant="secondary" onClick={() => dispatch(logout())}>Sign out</Button>
@@ -48,7 +52,8 @@ export default function App() {
       {verifyMessage && <p className="ui px-3 pt-2 text-sm text-muted-foreground">{verifyMessage}</p>}
       {view === 'board' && <Board />}
       {view === 'profile' && <ProfilePage />}
-      {view === 'moderation' && isAdmin(user) && <ModerationPanel />}
+      {view === 'help' && <HelpPage />}
+      {view === 'moderation' && isAdmin(user) && <><ModerationTable /><ModerationPanel /></>}
     </>
   );
 }
